@@ -126,50 +126,6 @@ if (response.success) {
 }
 ```
 
-### Checking Tokens
-
-```javascript
-// Check tokens by operation
-const response = await client.checkTokens(
-  'user123',     // userIdentifier
-  'send_email'   // operation
-);
-
-// Or check tokens by path
-const response = await client.checkTokens(
-  'user123',           // userIdentifier
-  undefined,           // operation (not used when path is specified)
-  '/api/v1/emails/send', // path
-  'POST'              // httpMethod (required when path is specified)
-);
-
-console.log(`Available: ${response.available}`);
-console.log(`Remaining tokens: ${response.tokensRemaining}`);
-if (response.rule) {
-  console.log(`Rule: ${response.rule.name} (refill: ${response.rule.refillRate}, burst: ${response.rule.burstRate})`);
-}
-```
-
-#### Using Request Objects
-
-```javascript
-const { CheckTokensRequest } = require('lightrate-client');
-
-// Create a check tokens request
-const request = new CheckTokensRequest({
-  operation: 'send_email',
-  userIdentifier: 'user123'
-});
-
-// Check tokens
-const response = await client.checkTokensWithRequest(request);
-
-console.log(`Available: ${response.available}`);
-console.log(`Remaining tokens: ${response.tokensRemaining}`);
-if (response.rule) {
-  console.log(`Rule: ${response.rule.name} (refill: ${response.rule.refillRate}, burst: ${response.rule.burstRate})`);
-}
-```
 
 ### Complete Example
 
@@ -181,30 +137,18 @@ const client = new LightRateClient('your_api_key', 'your_application_id');
 
 async function example() {
   try {
-    // Check if tokens are available before attempting to consume
-    const checkResponse = await client.checkTokens(
+    // Consume tokens
+    const consumeResponse = await client.consumeTokens(
       'user123',
+      1,
       'send_email'
     );
 
-    if (checkResponse.available) {
-      console.log(`Tokens available: ${checkResponse.tokensRemaining}`);
-      
-      // Consume tokens
-      const consumeResponse = await client.consumeTokens(
-        'user123',
-        1,
-        'send_email'
-      );
-
-      if (consumeResponse.success) {
-        console.log(`Successfully consumed tokens. Remaining: ${consumeResponse.tokensRemaining}`);
-        // Proceed with your operation
-      } else {
-        console.log(`Failed to consume tokens: ${consumeResponse.error}`);
-      }
+    if (consumeResponse.success) {
+      console.log(`Successfully consumed tokens. Remaining: ${consumeResponse.tokensRemaining}`);
+      // Proceed with your operation
     } else {
-      console.log(`No tokens available. Remaining: ${checkResponse.tokensRemaining}`);
+      console.log(`Failed to consume tokens: ${consumeResponse.error}`);
       // Handle rate limiting
     }
 
@@ -232,7 +176,6 @@ This package includes full TypeScript support with type definitions:
 import { 
   LightRateClient, 
   ConsumeTokensRequest, 
-  CheckTokensRequest,
   ClientOptions 
 } from 'lightrate-client';
 
@@ -305,9 +248,7 @@ new LightRateClient(apiKey: string, applicationId: string, options?: ClientOptio
 
 - `consumeTokens(userIdentifier, tokensRequested, operation?, path?, httpMethod?): Promise<ConsumeTokensResponse>`
 - `consumeLocalBucketToken(userIdentifier, operation?, path?, httpMethod?): Promise<ConsumeLocalBucketTokenResponse>`
-- `checkTokens(userIdentifier, operation?, path?, httpMethod?): Promise<CheckTokensResponse>`
 - `consumeTokensWithRequest(request): Promise<ConsumeTokensResponse>`
-- `checkTokensWithRequest(request): Promise<CheckTokensResponse>`
 - `getAllBucketStatuses(): Record<string, any>`
 - `resetAllBuckets(): void`
 - `getConfiguration(): Configuration`
@@ -353,10 +294,8 @@ new TokenBucket(maxTokens: number)
 ### Types
 
 - `ConsumeTokensRequest`
-- `CheckTokensRequest`
 - `ConsumeTokensResponse`
 - `ConsumeLocalBucketTokenResponse`
-- `CheckTokensResponse`
 - `Rule`
 - `ConfigurationOptions`
 - `ClientOptions`

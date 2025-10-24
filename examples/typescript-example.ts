@@ -8,7 +8,6 @@ import {
   configure, 
   getClient,
   ConsumeTokensRequest,
-  CheckTokensRequest,
   ClientOptions
 } from '../src/index';
 
