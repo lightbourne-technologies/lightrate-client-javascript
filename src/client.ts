@@ -10,7 +10,6 @@ import {
   ConsumeTokensResponse,
   ConsumeLocalBucketTokenResponse,
   ClientOptions,
-  BucketSizeConfigs,
   RequestOptions,
   Rule
 } from './types';
@@ -26,7 +25,6 @@ const VERSION = '1.0.0';
 export class LightRateClient {
   private configuration: Configuration;
   private tokenBuckets: Map<string, TokenBucket>;
-  private bucketSizeConfigs: BucketSizeConfigs;
   private axiosInstance!: AxiosInstance;
   private bucketMutexes: Map<string, { locked: boolean; queue: Array<() => void> }>;
 
@@ -46,7 +44,6 @@ export class LightRateClient {
       this.configuration = new Configuration();
     }
 
-    this.bucketSizeConfigs = options.bucketSizeConfigs || {};
     this.tokenBuckets = new Map();
     this.bucketMutexes = new Map();
     
@@ -198,17 +195,7 @@ export class LightRateClient {
   }
 
   private getBucketSizeForOperation(operation?: string, path?: string): number {
-    // Check for operation-specific configuration
-    if (operation && this.bucketSizeConfigs.operations && this.bucketSizeConfigs.operations[operation]) {
-      return this.bucketSizeConfigs.operations[operation];
-    }
-    
-    // Check for path-specific configuration
-    if (path && this.bucketSizeConfigs.paths && this.bucketSizeConfigs.paths[path]) {
-      return this.bucketSizeConfigs.paths[path];
-    }
-
-    // Fall back to default bucket size
+    // Use default bucket size for all operations
     return this.configuration.defaultLocalBucketSize;
   }
 
@@ -230,7 +217,7 @@ export class LightRateClient {
 
   private validateConfiguration(): void {
     if (!this.configuration.isValid()) {
-      throw new ConfigurationError('API key is required');
+      throw new ConfigurationError('API key and application ID are required');
     }
   }
 

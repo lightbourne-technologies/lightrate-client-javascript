@@ -12,23 +12,12 @@ import {
   ClientOptions
 } from '../src/index';
 
-// Example 1: Create a client with per-operation/path bucket size configuration
+// Example 1: Create a client with default bucket size configuration
 const client = new LightRateClient(
   process.env.LIGHTRATE_API_KEY || 'your_api_key_here',
   process.env.LIGHTRATE_APPLICATION_ID || 'your_application_id_here',
   {
-    defaultLocalBucketSize: 20,  // Default bucket size
-    bucketSizeConfigs: {
-      operations: {
-        'send_email': 100,      // Email operations get larger buckets
-        'send_sms': 50,         // SMS operations get medium buckets
-        'send_notification': 10 // Notifications get smaller buckets
-      },
-      paths: {
-        '/api/v1/emails/send': 75,  // Specific path gets custom size
-        '/api/v1/sms/send': 25      // Another specific path
-      }  
-    },
+    defaultLocalBucketSize: 20,  // Default bucket size for all operations
     logger: process.env.DEBUG ? console : null
   }
 );
@@ -39,7 +28,7 @@ console.log();
 async function runExamples(): Promise<void> {
   try {
     // Example 1: Email operation using local bucket
-    console.log('1. Email operation (bucket size: 100):');
+    console.log('1. Email operation (bucket size: 20):');
     const result1 = await client.consumeLocalBucketToken(
       'user123',
       'send_email'

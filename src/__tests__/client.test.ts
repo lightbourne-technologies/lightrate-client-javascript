@@ -356,31 +356,17 @@ describe('LightRateClient', () => {
     });
   });
 
-  describe('bucket size configuration', () => {
-    it('should use custom bucket sizes for operations', () => {
+  describe('default bucket size configuration', () => {
+    it('should use default bucket size for all operations', () => {
       const client = new LightRateClient('test-key', 'test-app-id', {
-        bucketSizeConfigs: {
-          operations: {
-            'send_email': 100,
-            'send_sms': 50
-          }
-        }
+        defaultLocalBucketSize: 10
       });
 
-      // This would be tested through the internal bucket creation logic
-      // The actual implementation would need to be tested through integration tests
-      expect(client.getConfiguration().defaultLocalBucketSize).toBe(5);
+      expect(client.getConfiguration().defaultLocalBucketSize).toBe(10);
     });
 
-    it('should use custom bucket sizes for paths', () => {
-      const client = new LightRateClient('test-key', 'test-app-id', {
-        bucketSizeConfigs: {
-          paths: {
-            '/api/v1/emails/send': 75,
-            '/api/v1/sms/send': 25
-          }
-        }
-      });
+    it('should use default bucket size when not specified', () => {
+      const client = new LightRateClient('test-key', 'test-app-id');
 
       expect(client.getConfiguration().defaultLocalBucketSize).toBe(5);
     });

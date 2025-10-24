@@ -56,10 +56,7 @@ export function getClient(): LightRateClient {
   if (!globalClient) {
     const config = getConfiguration();
     if (!config.isValid()) {
-      throw new Error('API key must be configured before using the global client. Call configure() first.');
-    }
-    if (!config.applicationId) {
-      throw new Error('Application ID must be configured before using the global client. Call configure() first.');
+      throw new Error('API key and application ID must be configured before using the global client. Call configure() first.');
     }
     globalClient = new LightRateClient(config.apiKey, config.applicationId);
   }

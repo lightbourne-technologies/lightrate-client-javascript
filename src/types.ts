@@ -49,21 +49,15 @@ export interface ClientOptions {
   retryAttempts?: number;
   logger?: any; // Logger interface
   defaultLocalBucketSize?: number;
-  bucketSizeConfigs?: BucketSizeConfigs;
-}
-
-export interface BucketSizeConfigs {
-  operations?: Record<string, number>;
-  paths?: Record<string, number>;
 }
 
 export interface ConfigurationOptions {
   apiKey: string;
+  applicationId: string;
   timeout?: number;
   retryAttempts?: number;
   logger?: any;
   defaultLocalBucketSize?: number;
-  applicationId?: string;
 }
 
 /**

@@ -83,16 +83,8 @@ describe('Main Module', () => {
       expect(client).toBeInstanceOf(LightRateClient);
     });
 
-    it('should throw error when no API key configured', () => {
-      expect(() => getClient()).toThrow('API key must be configured before using the global client');
-    });
-
-    it('should throw error when no application ID configured', () => {
-      configure({
-        apiKey: 'test-key'
-      });
-      
-      expect(() => getClient()).toThrow('Application ID must be configured before using the global client');
+    it('should throw error when no API key and application ID configured', () => {
+      expect(() => getClient()).toThrow('API key and application ID must be configured before using the global client');
     });
 
     it('should return same instance on multiple calls', () => {
@@ -177,7 +169,7 @@ describe('Main Module', () => {
       expect(config2.apiKey).toBe('');
       
       // Should throw error when trying to get client after reset without configuration
-      expect(() => getClient()).toThrow('API key must be configured before using the global client');
+      expect(() => getClient()).toThrow('API key and application ID must be configured before using the global client');
     });
   });
 

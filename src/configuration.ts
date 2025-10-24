@@ -10,7 +10,7 @@ export class Configuration {
   public retryAttempts: number;
   public logger?: any;
   public defaultLocalBucketSize: number;
-  public applicationId?: string;
+  public applicationId: string;
 
   constructor(options?: Partial<ConfigurationOptions>) {
     this.apiKey = options?.apiKey || '';
@@ -18,14 +18,14 @@ export class Configuration {
     this.retryAttempts = options?.retryAttempts || 3;
     this.logger = options?.logger;
     this.defaultLocalBucketSize = options?.defaultLocalBucketSize || 5;
-    this.applicationId = options?.applicationId;
+    this.applicationId = options?.applicationId || '';
   }
 
   /**
    * Check if the configuration is valid
    */
   public isValid(): boolean {
-    return !!this.apiKey;
+    return !!this.apiKey && !!this.applicationId;
   }
 
   /**

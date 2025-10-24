@@ -25,6 +25,7 @@ const { configure, getClient } = require('lightrate-client');
 
 configure({
   apiKey: 'your_api_key',
+  applicationId: 'your_application_id', // required
   timeout: 30, // optional, defaults to 30 seconds
   retryAttempts: 3, // optional, defaults to 3
   logger: console // optional, for request logging
@@ -36,21 +37,22 @@ configure({
 ```javascript
 const { LightRateClient, createClient } = require('lightrate-client');
 
-// Simple usage - just pass your API key
-const client = new LightRateClient('your_api_key');
+// Simple usage - pass your API key and application ID
+const client = new LightRateClient('your_api_key', 'your_application_id');
 
 // Or use the convenience method
-const client = createClient('your_api_key');
+const client = createClient('your_api_key', 'your_application_id');
 
 // With additional options
-const client = new LightRateClient('your_api_key', {
+const client = new LightRateClient('your_api_key', 'your_application_id', {
   timeout: 60,
   defaultLocalBucketSize: 10
 });
 
 // Or configure globally and use the default client
 configure({
-  apiKey: 'your_api_key'
+  apiKey: 'your_api_key',
+  applicationId: 'your_application_id'
 });
 const client = getClient();
 ```
@@ -86,20 +88,9 @@ if (response.success) {
 The client supports local token buckets for improved performance:
 
 ```javascript
-// Configure client with bucket sizes
-const client = new LightRateClient('your_api_key', {
-  defaultLocalBucketSize: 20,
-  bucketSizeConfigs: {
-    operations: {
-      'send_email': 100,      // Email operations get larger buckets
-      'send_sms': 50,         // SMS operations get medium buckets
-      'send_notification': 10 // Notifications get smaller buckets
-    },
-    paths: {
-      '/api/v1/emails/send': 75,  // Specific path gets custom size
-      '/api/v1/sms/send': 25      // Another specific path
-    }  
-  }
+// Configure client with default bucket size
+const client = new LightRateClient('your_api_key', 'your_application_id', {
+  defaultLocalBucketSize: 20  // All operations use this bucket size
 });
 
 // Consume tokens using local bucket (more efficient)
@@ -185,8 +176,8 @@ if (response.rule) {
 ```javascript
 const { LightRateClient } = require('lightrate-client');
 
-// Create a client with just your API key
-const client = new LightRateClient('your_api_key');
+// Create a client with your API key and application ID
+const client = new LightRateClient('your_api_key', 'your_application_id');
 
 async function example() {
   try {
@@ -245,7 +236,7 @@ import {
   ClientOptions 
 } from 'lightrate-client';
 
-const client = new LightRateClient('your_api_key', {
+const client = new LightRateClient('your_api_key', 'your_application_id', {
   timeout: 30,
   retryAttempts: 3
 } as ClientOptions);
@@ -307,7 +298,7 @@ Main client class for interacting with the LightRate API.
 
 **Constructor:**
 ```javascript
-new LightRateClient(apiKey?: string, options?: ClientOptions)
+new LightRateClient(apiKey: string, applicationId: string, options?: ClientOptions)
 ```
 
 **Methods:**
@@ -356,7 +347,7 @@ new TokenBucket(maxTokens: number)
 
 - `configure(options): void` - Configure global client
 - `getClient(): LightRateClient` - Get global client instance
-- `createClient(apiKey, options?): LightRateClient` - Create new client
+- `createClient(apiKey, applicationId, options?): LightRateClient` - Create new client
 - `reset(): void` - Reset global configuration
 
 ### Types
@@ -369,7 +360,6 @@ new TokenBucket(maxTokens: number)
 - `Rule`
 - `ConfigurationOptions`
 - `ClientOptions`
-- `BucketSizeConfigs`
 - `TokenBucketStatus`
 
 ## Development
