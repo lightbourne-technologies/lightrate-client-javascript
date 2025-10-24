@@ -1,0 +1,391 @@
+# LightRate Client JavaScript
+
+A JavaScript/TypeScript client for the LightRate token management API, providing easy-to-use methods for consuming and checking tokens with local bucket management.
+
+## Installation
+
+```bash
+npm install lightrate-client
+```
+
+Or with yarn:
+
+```bash
+yarn add lightrate-client
+```
+
+## Usage
+
+### Configuration
+
+Configure the client with your API credentials:
+
+```javascript
+const { configure, getClient } = require('lightrate-client');
+
+configure({
+  apiKey: 'your_api_key',
+  timeout: 30, // optional, defaults to 30 seconds
+  retryAttempts: 3, // optional, defaults to 3
+  logger: console // optional, for request logging
+});
+```
+
+### Basic Usage
+
+```javascript
+const { LightRateClient, createClient } = require('lightrate-client');
+
+// Simple usage - just pass your API key
+const client = new LightRateClient('your_api_key');
+
+// Or use the convenience method
+const client = createClient('your_api_key');
+
+// With additional options
+const client = new LightRateClient('your_api_key', {
+  timeout: 60,
+  defaultLocalBucketSize: 10
+});
+
+// Or configure globally and use the default client
+configure({
+  apiKey: 'your_api_key'
+});
+const client = getClient();
+```
+
+### Consuming Tokens
+
+```javascript
+// Consume tokens by operation
+const response = await client.consumeTokens(
+  'user123',     // userIdentifier
+  1,             // tokensRequested
+  'send_email'   // operation
+);
+
+// Or consume tokens by path
+const response = await client.consumeTokens(
+  'user123',           // userIdentifier
+  1,                   // tokensRequested
+  undefined,           // operation (not used when path is specified)
+  '/api/v1/emails/send', // path
+  'POST'              // httpMethod (required when path is specified)
+);
+
+if (response.success) {
+  console.log(`Tokens consumed successfully. Remaining: ${response.tokensRemaining}`);
+} else {
+  console.log(`Failed to consume tokens: ${response.error}`);
+}
+```
+
+#### Using Local Token Buckets
+
+The client supports local token buckets for improved performance:
+
+```javascript
+// Configure client with bucket sizes
+const client = new LightRateClient('your_api_key', {
+  defaultLocalBucketSize: 20,
+  bucketSizeConfigs: {
+    operations: {
+      'send_email': 100,      // Email operations get larger buckets
+      'send_sms': 50,         // SMS operations get medium buckets
+      'send_notification': 10 // Notifications get smaller buckets
+    },
+    paths: {
+      '/api/v1/emails/send': 75,  // Specific path gets custom size
+      '/api/v1/sms/send': 25      // Another specific path
+    }  
+  }
+});
+
+// Consume tokens using local bucket (more efficient)
+const result = await client.consumeLocalBucketToken(
+  'user123',     // userIdentifier
+  'send_email'   // operation
+);
+
+console.log(`Success: ${result.success}`);
+console.log(`Used local token: ${result.usedLocalToken}`);
+console.log(`Bucket status: ${JSON.stringify(result.bucketStatus)}`);
+```
+
+#### Using Request Objects
+
+```javascript
+const { ConsumeTokensRequest } = require('lightrate-client');
+
+// Create a consume tokens request
+const request = new ConsumeTokensRequest({
+  operation: 'send_email',
+  userIdentifier: 'user123',
+  tokensRequested: 1
+});
+
+// Consume tokens
+const response = await client.consumeTokensWithRequest(request);
+
+if (response.success) {
+  console.log(`Tokens consumed successfully. Remaining: ${response.tokensRemaining}`);
+} else {
+  console.log(`Failed to consume tokens: ${response.error}`);
+}
+```
+
+### Checking Tokens
+
+```javascript
+// Check tokens by operation
+const response = await client.checkTokens(
+  'user123',     // userIdentifier
+  'send_email'   // operation
+);
+
+// Or check tokens by path
+const response = await client.checkTokens(
+  'user123',           // userIdentifier
+  undefined,           // operation (not used when path is specified)
+  '/api/v1/emails/send', // path
+  'POST'              // httpMethod (required when path is specified)
+);
+
+console.log(`Available: ${response.available}`);
+console.log(`Remaining tokens: ${response.tokensRemaining}`);
+if (response.rule) {
+  console.log(`Rule: ${response.rule.name} (refill: ${response.rule.refillRate}, burst: ${response.rule.burstRate})`);
+}
+```
+
+#### Using Request Objects
+
+```javascript
+const { CheckTokensRequest } = require('lightrate-client');
+
+// Create a check tokens request
+const request = new CheckTokensRequest({
+  operation: 'send_email',
+  userIdentifier: 'user123'
+});
+
+// Check tokens
+const response = await client.checkTokensWithRequest(request);
+
+console.log(`Available: ${response.available}`);
+console.log(`Remaining tokens: ${response.tokensRemaining}`);
+if (response.rule) {
+  console.log(`Rule: ${response.rule.name} (refill: ${response.rule.refillRate}, burst: ${response.rule.burstRate})`);
+}
+```
+
+### Complete Example
+
+```javascript
+const { LightRateClient } = require('lightrate-client');
+
+// Create a client with just your API key
+const client = new LightRateClient('your_api_key');
+
+async function example() {
+  try {
+    // Check if tokens are available before attempting to consume
+    const checkResponse = await client.checkTokens(
+      'user123',
+      'send_email'
+    );
+
+    if (checkResponse.available) {
+      console.log(`Tokens available: ${checkResponse.tokensRemaining}`);
+      
+      // Consume tokens
+      const consumeResponse = await client.consumeTokens(
+        'user123',
+        1,
+        'send_email'
+      );
+
+      if (consumeResponse.success) {
+        console.log(`Successfully consumed tokens. Remaining: ${consumeResponse.tokensRemaining}`);
+        // Proceed with your operation
+      } else {
+        console.log(`Failed to consume tokens: ${consumeResponse.error}`);
+      }
+    } else {
+      console.log(`No tokens available. Remaining: ${checkResponse.tokensRemaining}`);
+      // Handle rate limiting
+    }
+
+  } catch (error) {
+    if (error.name === 'UnauthorizedError') {
+      console.log(`Authentication failed: ${error.message}`);
+    } else if (error.name === 'TooManyRequestsError') {
+      console.log(`Rate limited: ${error.message}`);
+    } else if (error.name === 'APIError') {
+      console.log(`API Error (${error.statusCode}): ${error.message}`);
+    } else if (error.name === 'NetworkError') {
+      console.log(`Network error: ${error.message}`);
+    }
+  }
+}
+
+example();
+```
+
+## TypeScript Support
+
+This package includes full TypeScript support with type definitions:
+
+```typescript
+import { 
+  LightRateClient, 
+  ConsumeTokensRequest, 
+  CheckTokensRequest,
+  ClientOptions 
+} from 'lightrate-client';
+
+const client = new LightRateClient('your_api_key', {
+  timeout: 30,
+  retryAttempts: 3
+} as ClientOptions);
+
+const request: ConsumeTokensRequest = {
+  operation: 'send_email',
+  userIdentifier: 'user123',
+  tokensRequested: 1
+};
+
+const response = await client.consumeTokensWithRequest(request);
+```
+
+## Error Handling
+
+The client provides comprehensive error handling with specific exception types:
+
+```javascript
+try {
+  const response = await client.consumeTokens('send_email', undefined, undefined, 'user123', 1);
+} catch (error) {
+  if (error.name === 'UnauthorizedError') {
+    console.log('Authentication failed:', error.message);
+  } else if (error.name === 'NotFoundError') {
+    console.log('Resource not found:', error.message);
+  } else if (error.name === 'APIError') {
+    console.log(`API Error (${error.statusCode}):`, error.message);
+  } else if (error.name === 'NetworkError') {
+    console.log('Network error:', error.message);
+  } else if (error.name === 'TimeoutError') {
+    console.log('Request timed out:', error.message);
+  }
+}
+```
+
+Available error types:
+- `LightRateError` - Base error class
+- `ConfigurationError` - Configuration-related errors
+- `AuthenticationError` - Authentication-related errors
+- `APIError` - Base API error class
+- `BadRequestError` - 400 errors
+- `UnauthorizedError` - 401 errors
+- `ForbiddenError` - 403 errors
+- `NotFoundError` - 404 errors
+- `UnprocessableEntityError` - 422 errors
+- `TooManyRequestsError` - 429 errors
+- `InternalServerError` - 500 errors
+- `ServiceUnavailableError` - 503 errors
+- `NetworkError` - Network-related errors
+- `TimeoutError` - Request timeout errors
+
+## API Reference
+
+### Classes
+
+#### `LightRateClient`
+
+Main client class for interacting with the LightRate API.
+
+**Constructor:**
+```javascript
+new LightRateClient(apiKey?: string, options?: ClientOptions)
+```
+
+**Methods:**
+
+- `consumeTokens(userIdentifier, tokensRequested, operation?, path?, httpMethod?): Promise<ConsumeTokensResponse>`
+- `consumeLocalBucketToken(userIdentifier, operation?, path?, httpMethod?): Promise<ConsumeLocalBucketTokenResponse>`
+- `checkTokens(userIdentifier, operation?, path?, httpMethod?): Promise<CheckTokensResponse>`
+- `consumeTokensWithRequest(request): Promise<ConsumeTokensResponse>`
+- `checkTokensWithRequest(request): Promise<CheckTokensResponse>`
+- `getAllBucketStatuses(): Record<string, any>`
+- `resetAllBuckets(): void`
+- `getConfiguration(): Configuration`
+
+#### `Configuration`
+
+Configuration class for client settings.
+
+**Constructor:**
+```javascript
+new Configuration(options?: Partial<ConfigurationOptions>)
+```
+
+**Methods:**
+- `isValid(): boolean`
+- `toObject(): Record<string, any>`
+- `update(options): void`
+
+#### `TokenBucket`
+
+Token bucket for local token management.
+
+**Constructor:**
+```javascript
+new TokenBucket(maxTokens: number)
+```
+
+**Methods:**
+- `hasTokens(): boolean`
+- `consumeToken(): boolean`
+- `consumeTokens(count): number`
+- `refill(tokensToFetch): number`
+- `getStatus(): TokenBucketStatus`
+- `reset(): void`
+
+### Global Functions
+
+- `configure(options): void` - Configure global client
+- `getClient(): LightRateClient` - Get global client instance
+- `createClient(apiKey, options?): LightRateClient` - Create new client
+- `reset(): void` - Reset global configuration
+
+### Types
+
+- `ConsumeTokensRequest`
+- `CheckTokensRequest`
+- `ConsumeTokensResponse`
+- `ConsumeLocalBucketTokenResponse`
+- `CheckTokensResponse`
+- `Rule`
+- `ConfigurationOptions`
+- `ClientOptions`
+- `BucketSizeConfigs`
+- `TokenBucketStatus`
+
+## Development
+
+After checking out the repo, run `npm install` to install dependencies. Then, run `npm test` to run the tests. You can also run `npm run dev` for development mode with watch.
+
+To build the project, run `npm run build`.
+
+## Contributing
+
+Bug reports and pull requests are welcome on GitHub at https://github.com/lightbourne-technologies/lightrate-client-javascript. This project is intended to be a safe, welcoming space for collaboration, and contributors are expected to adhere to the code of conduct.
+
+## License
+
+The package is available as open source under the terms of the [MIT License](https://opensource.org/licenses/MIT).
+
+## Code of Conduct
+
+Everyone interacting in the LightRate Client JavaScript project's codebases, issue trackers, chat rooms and mailing lists is expected to follow the code of conduct.
