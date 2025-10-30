@@ -249,7 +249,7 @@ export class LightRateClient {
     // Synchronize on the buckets map to ensure only one request creates a bucket
     return this.synchronizeBucketsMap(async () => {
       // Check if bucket exists and has tokens
-      if (!this.tokenBuckets.get(bucketKey)) {
+      if (!this.tokenBuckets.get(bucketKey) || this.tokenBuckets.get(bucketKey)?.expired()) {
         const bucket = new TokenBucket(
           this.configuration.defaultLocalBucketSize,
           rule.id,
