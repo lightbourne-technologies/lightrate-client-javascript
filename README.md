@@ -85,7 +85,7 @@ if (response.success) {
 
 #### Using Local Token Buckets
 
-The client supports local token buckets for improved performance:
+The client supports local token buckets for improved performance. Buckets are automatically created based on the rules returned by the API, and are matched against incoming requests using the `matcher` field from the rule. Each bucket is associated with a specific user and rule, ensuring proper isolation.
 
 ```javascript
 // Configure client with default bucket size
@@ -102,7 +102,16 @@ const result = await client.consumeLocalBucketToken(
 console.log(`Success: ${result.success}`);
 console.log(`Used local token: ${result.usedLocalToken}`);
 console.log(`Bucket status: ${JSON.stringify(result.bucketStatus)}`);
+
+// Note: If the API returns a default rule (isDefault: true), 
+// no local bucket is created and tokens are consumed directly from the API
 ```
+
+**Bucket Matching:**
+- Buckets are matched using the `matcher` field from the rule, which supports regex patterns
+- Each user has separate buckets per rule, ensuring proper isolation
+- Buckets expire after 60 seconds of inactivity
+- Default rules (isDefault: true) do not create local buckets
 
 #### Using Request Objects
 
@@ -269,11 +278,11 @@ new Configuration(options?: Partial<ConfigurationOptions>)
 
 #### `TokenBucket`
 
-Token bucket for local token management.
+Token bucket for local token management. Buckets are matched against incoming requests using the `matcher` field from the rule returned by the API. Each bucket is associated with a specific rule and user identifier.
 
 **Constructor:**
 ```javascript
-new TokenBucket(maxTokens: number)
+new TokenBucket(maxTokens: number, ruleId: string, userIdentifier: string, matcher?: string, httpMethod?: string)
 ```
 
 **Methods:**
@@ -283,6 +292,9 @@ new TokenBucket(maxTokens: number)
 - `refill(tokensToFetch): number`
 - `getStatus(): TokenBucketStatus`
 - `reset(): void`
+- `matches(operation?, path?, httpMethod?): boolean` - Check if this bucket matches the given request using the matcher regex
+- `expired(): boolean` - Check if bucket has expired (not accessed in 60 seconds)
+- `checkAndConsumeToken(): boolean` - Atomically check and consume a token
 
 ### Global Functions
 
@@ -293,10 +305,10 @@ new TokenBucket(maxTokens: number)
 
 ### Types
 
-- `ConsumeTokensRequest`
+- `ConsumeTokensRequest` - Includes optional `tokensRequestedForDefaultBucketMatch` field
 - `ConsumeTokensResponse`
 - `ConsumeLocalBucketTokenResponse`
-- `Rule`
+- `Rule` - Includes `matcher` (regex pattern) and `httpMethod` fields for bucket matching, plus `isDefault` flag
 - `ConfigurationOptions`
 - `ClientOptions`
 - `TokenBucketStatus`

@@ -26,7 +26,8 @@ export class LightRateClient {
   private configuration: Configuration;
   private tokenBuckets: Map<string, TokenBucket>;
   private axiosInstance!: AxiosInstance;
-  private bucketMutexes: Map<string, { locked: boolean; queue: Array<() => void> }>;
+  private bucketsLockPromise: Promise<void> | null = null;
+  private bucketsLockResolve: (() => void) | null = null;
 
   constructor(apiKey: string, applicationId: string, options: ClientOptions = {}) {
     // Initialize configuration
@@ -45,7 +46,6 @@ export class LightRateClient {
     }
 
     this.tokenBuckets = new Map();
-    this.bucketMutexes = new Map();
     
     this.validateConfiguration();
     this.setupAxiosInstance();
@@ -60,59 +60,108 @@ export class LightRateClient {
     path?: string,
     httpMethod?: string
   ): Promise<ConsumeLocalBucketTokenResponse> {
-    const bucketKey = this.createBucketKey(userIdentifier, operation, path, httpMethod);
-    const release = await this.acquire(bucketKey);
-    try {
-      const bucket = this.getOrCreateBucket(userIdentifier, operation, path, httpMethod);
+    // First, try to find an existing bucket that matches this request
+    const bucket = await this.findBucketByMatcher(userIdentifier, operation, path, httpMethod);
 
-      const tokensAvailableLocally = bucket.hasTokens();
-      let tokensConsumed = 0;
-      
-      if (!tokensAvailableLocally) {
-        const tokensToFetch = this.getBucketSizeForOperation(operation, path);
-        const request: ConsumeTokensRequest = {
-          operation,
-          path,
-          httpMethod,
-          userIdentifier,
-          tokensRequested: tokensToFetch,
-          timestamp: new Date(),
-          applicationId: this.configuration.applicationId
-        };
-
-        try {
-          const response = await this.post('/api/v1/tokens/consume', request);
-          tokensConsumed = response.tokensConsumed || 0;
-          
-          if (tokensConsumed > 0) {
-            bucket.refill(tokensConsumed);
-          }
-        } catch (error) {
-          return {
-            success: false,
-            usedLocalToken: false,
-            bucketStatus: bucket.getStatus()
-          };
-        }
-      }
-
-      if (!tokensAvailableLocally && tokensConsumed === 0) {
+    if (bucket) {
+      // Use bucket's lock to synchronize the check and consume
+      const consumed = await bucket.checkAndConsumeToken();
+      if (consumed) {
         return {
-          success: false,
-          usedLocalToken: false,
+          success: true,
+          usedLocalToken: true,
           bucketStatus: bucket.getStatus()
         };
       }
+    }
 
-      const consumedSuccessfully = bucket.consumeToken();
+    // Still empty, make API call while holding the lock
+    const tokensToFetch = this.configuration.defaultLocalBucketSize;
+    const request: ConsumeTokensRequest = {
+      operation,
+      path,
+      httpMethod,
+      userIdentifier,
+      tokensRequested: tokensToFetch,
+      tokensRequestedForDefaultBucketMatch: 1,
+      timestamp: new Date(),
+      applicationId: this.configuration.applicationId
+    };
+
+    const response = await this.consumeTokensWithRequest(request);
+
+    if (response.rule.isDefault) {
+      return {
+        success: response.tokensConsumed > 0,
+        usedLocalToken: false,
+        bucketStatus: null as any
+      };
+    }
+
+    console.log('getting new tokens', response);
+
+    const newBucket = await this.fillBucketAndCreateIfNotExists(userIdentifier, response.rule, response.tokensConsumed);
+
+    const newBucketTokensAvailable = await newBucket.checkAndConsumeToken();
+
+    console.log('new bucket tokens available', newBucketTokensAvailable);
+
+    return {
+      success: newBucketTokensAvailable,
+      usedLocalToken: false,
+      bucketStatus: newBucket.getStatus()
+    };
+  }
+
+
+  private async fetchTokensAndCreateBucket(
+    userIdentifier: string,
+    operation: string | undefined,
+    path: string | undefined,
+    httpMethod: string | undefined
+  ): Promise<ConsumeLocalBucketTokenResponse> {
+    const tokensToFetch = this.configuration.defaultLocalBucketSize;
+    
+    const request: ConsumeTokensRequest = {
+      operation,
+      path,
+      httpMethod,
+      userIdentifier,
+      tokensRequested: tokensToFetch,
+      tokensRequestedForDefaultBucketMatch: 1,
+      timestamp: new Date(),
+      applicationId: this.configuration.applicationId
+    };
+
+    try {
+      const response = await this.consumeTokensWithRequest(request);
+
+      // If this is a default bucket, don't create a local bucket
+      if (response.rule.isDefault) {
+        return {
+          success: response.tokensConsumed > 0,
+          usedLocalToken: false,
+          bucketStatus: null as any // TypeScript compatibility
+        };
+      }
+
+      // Create or get bucket for this rule (synchronized)
+      const newBucket = await this.fillBucketAndCreateIfNotExists(userIdentifier, response.rule, response.tokensConsumed);
+      
+      // CheckAndCreateBucket refills the bucket, now consume a token atomically
+      const tokensAvailable = await newBucket.checkAndConsumeToken();
 
       return {
-        success: consumedSuccessfully,
-        usedLocalToken: tokensAvailableLocally,
-        bucketStatus: bucket.getStatus()
+        success: tokensAvailable,
+        usedLocalToken: false,
+        bucketStatus: newBucket.getStatus()
       };
-    } finally {
-      release();
+    } catch (error) {
+      return {
+        success: false,
+        usedLocalToken: false,
+        bucketStatus: null as any
+      };
     }
   }
 
@@ -132,6 +181,7 @@ export class LightRateClient {
       httpMethod,
       userIdentifier,
       tokensRequested,
+      tokensRequestedForDefaultBucketMatch: 1,
       timestamp: new Date(),
       applicationId: this.configuration.applicationId
     };
@@ -176,42 +226,80 @@ export class LightRateClient {
     return this.configuration;
   }
 
-  private getOrCreateBucket(
+  private async findBucketByMatcher(
     userIdentifier: string,
     operation?: string,
     path?: string,
     httpMethod?: string
-  ): TokenBucket {
-    // Create a unique key for this user/operation/path combination
-    const bucketKey = this.createBucketKey(userIdentifier, operation, path, httpMethod);
+  ): Promise<TokenBucket | null> {
+    return this.synchronizeBucketsMap(() => {
+      // Iterate through buckets to find one that matches this user and request
+      for (const bucket of this.tokenBuckets.values()) {
+        if (bucket.matches(operation, path, httpMethod) && bucket.userIdentifier === userIdentifier) {
+          return bucket;
+        }
+      }
+      return null;
+    });
+  }
+
+  private async fillBucketAndCreateIfNotExists(
+    userIdentifier: string,
+    rule: Rule,
+    tokenCount: number
+  ): Promise<TokenBucket> {
+    const bucketKey = `${userIdentifier}:rule:${rule.id}`;
     
-    // Return existing bucket or create a new one with appropriate size
-    if (!this.tokenBuckets.has(bucketKey)) {
-      const bucketSize = this.getBucketSizeForOperation(operation, path);
-      this.tokenBuckets.set(bucketKey, new TokenBucket(bucketSize));
+    // Synchronize on the buckets map to ensure only one request creates a bucket
+    return this.synchronizeBucketsMap(async () => {
+      // Check if bucket exists and has tokens
+      if (!this.tokenBuckets.get(bucketKey)) {
+        const bucket = new TokenBucket(
+          this.configuration.defaultLocalBucketSize,
+          rule.id,
+          userIdentifier,
+          rule.matcher,
+          rule.httpMethod
+        );
+        this.tokenBuckets.set(bucketKey, bucket);
+      }
+
+      const bucket = this.tokenBuckets.get(bucketKey) as TokenBucket;
+      
+      await bucket.synchronize(() => {
+        bucket.refill(tokenCount);
+      });
+
+      return bucket;
+    });
+  }
+
+  /**
+   * Synchronize access to the buckets map for thread-safe operations
+   * @param fn Function to execute under lock
+   */
+  private async synchronizeBucketsMap<T>(fn: () => T | Promise<T>): Promise<T> {
+    // Wait for any existing lock
+    while (this.bucketsLockPromise) {
+      await this.bucketsLockPromise;
     }
 
-    return this.tokenBuckets.get(bucketKey)!;
-  }
+    // Acquire lock
+    this.bucketsLockPromise = new Promise<void>((resolve) => {
+      this.bucketsLockResolve = resolve;
+    });
 
-  private getBucketSizeForOperation(operation?: string, path?: string): number {
-    // Use default bucket size for all operations
-    return this.configuration.defaultLocalBucketSize;
-  }
-
-  private createBucketKey(
-    userIdentifier: string,
-    operation?: string,
-    path?: string,
-    httpMethod?: string
-  ): string {
-    // Create a unique key that combines user, operation, and path
-    if (operation) {
-      return `${userIdentifier}:operation:${operation}`;
-    } else if (path) {
-      return `${userIdentifier}:path:${path}:${httpMethod}`;
-    } else {
-      throw new Error('Either operation or path must be specified');
+    try {
+      const result = await fn();
+      return result;
+    } finally {
+      // Release lock
+      const resolve = this.bucketsLockResolve;
+      this.bucketsLockPromise = null;
+      this.bucketsLockResolve = null;
+      if (resolve) {
+        resolve();
+      }
     }
   }
 
@@ -276,38 +364,6 @@ export class LightRateClient {
     return response.data;
   }
 
-  // Lightweight async mutex implementation keyed by bucket key
-  private async acquire(key: string): Promise<() => void> {
-    return new Promise((resolve) => {
-      const mutex = this.bucketMutexes.get(key) || { locked: false, queue: [] };
-      
-      if (!mutex.locked) {
-        // We can acquire the lock immediately
-        mutex.locked = true;
-        this.bucketMutexes.set(key, mutex);
-        resolve(() => {
-          mutex.locked = false;
-          const next = mutex.queue.shift();
-          if (next) {
-            next();
-          }
-        });
-      } else {
-        // We need to wait in the queue
-        mutex.queue.push(() => {
-          mutex.locked = true;
-          resolve(() => {
-            mutex.locked = false;
-            const next = mutex.queue.shift();
-            if (next) {
-              next();
-            }
-          });
-        });
-        this.bucketMutexes.set(key, mutex);
-      }
-    });
-  }
 
   private isValidConsumeTokensRequest(request: ConsumeTokensRequest): boolean {
     if (!request.userIdentifier || request.userIdentifier.trim() === '') {
@@ -339,7 +395,9 @@ export class LightRateClient {
         name: data.rule?.name || '',
         refillRate: data.rule?.refillRate || 0,
         burstRate: data.rule?.burstRate || 0,
-        isDefault: data.rule?.isDefault || false
+        isDefault: data.rule?.isDefault || false,
+        matcher: data.rule?.matcher,
+        httpMethod: data.rule?.httpMethod
       }
     };
   }

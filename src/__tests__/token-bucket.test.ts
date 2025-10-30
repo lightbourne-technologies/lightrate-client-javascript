@@ -8,7 +8,7 @@ describe('TokenBucket', () => {
   let bucket: TokenBucket;
 
   beforeEach(() => {
-    bucket = new TokenBucket(5);
+    bucket = new TokenBucket(5, 'test_rule_id', 'test_user');
   });
 
   describe('constructor', () => {

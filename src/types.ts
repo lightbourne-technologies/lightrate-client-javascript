@@ -8,6 +8,7 @@ export interface ConsumeTokensRequest {
   httpMethod?: string;
   userIdentifier: string;
   tokensRequested: number;
+  tokensRequestedForDefaultBucketMatch?: number;
   timestamp?: Date;
   applicationId?: string;
 }
@@ -22,6 +23,8 @@ export interface Rule {
   refillRate: number;
   burstRate: number;
   isDefault: boolean;
+  matcher?: string;
+  httpMethod?: string;
 }
 
 export interface ConsumeTokensResponse {
