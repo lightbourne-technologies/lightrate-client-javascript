@@ -98,13 +98,9 @@ export class LightRateClient {
       };
     }
 
-    console.log('getting new tokens', response);
-
     const newBucket = await this.fillBucketAndCreateIfNotExists(userIdentifier, response.rule, response.tokensConsumed);
 
     const newBucketTokensAvailable = await newBucket.checkAndConsumeToken();
-
-    console.log('new bucket tokens available', newBucketTokensAvailable);
 
     return {
       success: newBucketTokensAvailable,

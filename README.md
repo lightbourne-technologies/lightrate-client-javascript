@@ -1,6 +1,6 @@
 # LightRate Client JavaScript
 
-A JavaScript/TypeScript client for the LightRate token management API, providing easy-to-use methods for consuming and checking tokens with local bucket management.
+A JavaScript/TypeScript client for the LightRate token management API, providing easy-to-use methods for consuming tokens with local bucket management.
 
 ## Installation
 

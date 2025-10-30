@@ -109,4 +109,60 @@ describe('TokenBucket', () => {
       expect(bucket.availableTokensCount).toBe(0);
     });
   });
+
+  describe('expiration', () => {
+    const now = new Date('2025-01-01T00:00:00.000Z');
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      jest.setSystemTime(now);
+      // fresh bucket per test with deterministic time
+      bucket = new TokenBucket(5, 'rule_expire', 'user_expire', 'send_email');
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('should not be expired immediately after creation', () => {
+      expect(bucket.expired()).toBe(false);
+    });
+
+    it('should expire after 60 seconds of inactivity', () => {
+      // Access bucket to ensure lastAccessedAt is now
+      bucket.refill(1);
+      expect(bucket.expired()).toBe(false);
+
+      // Advance time by 61 seconds
+      jest.setSystemTime(new Date(now.getTime() + 61_000));
+      expect(bucket.expired()).toBe(true);
+    });
+
+    it('touch should prevent expiration if activity within 60 seconds', async () => {
+      bucket.refill(1);
+      // Advance 59 seconds, still not expired
+      jest.setSystemTime(new Date(now.getTime() + 59_000));
+      expect(bucket.expired()).toBe(false);
+
+      // Activity updates lastAccessedAt (checkAndConsumeToken touches the bucket)
+      await bucket.checkAndConsumeToken();
+
+      // Advance another 59 seconds from the last activity
+      jest.setSystemTime(new Date(now.getTime() + 118_000));
+      expect(bucket.expired()).toBe(false);
+
+      // Advance to >60s since last activity
+      jest.setSystemTime(new Date(now.getTime() + 121_000));
+      expect(bucket.expired()).toBe(true);
+    });
+
+    it('should not match after expiration', () => {
+      // Initially matcher should work
+      expect(bucket.matches('send_email')).toBe(true);
+
+      // After 61s, bucket should be expired and not match
+      jest.setSystemTime(new Date(now.getTime() + 61_000));
+      expect(bucket.matches('send_email')).toBe(false);
+    });
+  });
 });

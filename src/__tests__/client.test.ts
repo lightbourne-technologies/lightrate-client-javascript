@@ -832,8 +832,6 @@ describe('LightRateClient', () => {
 
       const results = await Promise.all(promises);
 
-      console.log(results);
-
       // All requests should succeed
       // Note: With concurrent access and proper synchronization, all should succeed
       // Even if multiple API calls are made, they all should consume tokens successfully

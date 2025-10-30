@@ -79,7 +79,6 @@ async function runExamples() {
       'send_notification'
     );
 
-    console.log(`   Success: ${apiResponse.success}`);
     console.log(`   Tokens consumed: ${apiResponse.tokensConsumed}`);
     console.log(`   Tokens remaining: ${apiResponse.tokensRemaining}`);
     console.log();
