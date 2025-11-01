@@ -71,8 +71,30 @@ async function runExamples() {
     console.log(`   Bucket status: ${JSON.stringify(result4.bucketStatus)}`);
     console.log();
 
-    // Example 5: Direct API call using consume_tokens
-    console.log('5. Direct API call using consume_tokens:');
+    // Example 5: HTTP method differentiation
+    console.log('5. Path-based operations with different HTTP methods:');
+    const result5a = await client.consumeLocalBucketToken('user123', undefined, '/api/v1/data', 'GET');
+    const result5b = await client.consumeLocalBucketToken('user123', undefined, '/api/v1/data', 'POST');
+    
+    console.log(`   GET request - Success: ${result5a.success}`);
+    console.log(`   POST request - Success: ${result5b.success}`);
+    console.log('   (These create separate buckets due to different HTTP methods)');
+    console.log();
+
+    // Example 6: Different users calling same operation
+    console.log('6. Different users calling same operation:');
+    const result6a = await client.consumeLocalBucketToken('userABC', 'send_notification');
+    const result6b = await client.consumeLocalBucketToken('userDEF', 'send_notification');
+    const result6c = await client.consumeLocalBucketToken('userGHI', 'send_notification');
+
+    console.log(`   User ABC - Success: ${result6a.success} ${JSON.stringify(result6a.bucketStatus)}`);
+    console.log(`   User DEF - Success: ${result6b.success} ${JSON.stringify(result6b.bucketStatus)}`);
+    console.log(`   User GHI - Success: ${result6c.success} ${JSON.stringify(result6c.bucketStatus)}`);
+    console.log('   (These create separate buckets due to different users)');
+    console.log();
+
+    // Example 7: Direct API call using consume_tokens
+    console.log('7. Direct API call using consume_tokens:');
     const apiResponse = await client.consumeTokens(
       'user789',
       3,
